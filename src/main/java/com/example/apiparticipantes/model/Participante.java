@@ -25,7 +25,7 @@ public class Participante {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "cargo", nullable = false, length = 20)
-    private Cargo cargo; // ALUNO ou PROFESSOR
+    private Cargo cargo; // ALUNO || PROFESSOR || EXTERNO
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_endereco_participante")

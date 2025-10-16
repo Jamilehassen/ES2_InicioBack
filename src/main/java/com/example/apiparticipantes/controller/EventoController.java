@@ -90,4 +90,47 @@ public class EventoController {
         // Retorna o DTO
         return ResponseEntity.status(HttpStatus.CREATED).body(respostaDto);
     }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<EventoResponseDto> editarEvento(@PathVariable Long id, @RequestBody EventoRequest request) {
+        // 1. Busca o evento existente no banco de dados
+        Evento eventoExistente = eventoRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Evento não encontrado."));
+
+        // 2. Atualiza os dados do evento com as informações da requisição
+        eventoExistente.setNome(request.getNome());
+        eventoExistente.setDataInicio(request.getDataInicio());
+        eventoExistente.setDataFim(request.getDataFim());
+        eventoExistente.setHoraInicio(request.getHoraInicio());
+        eventoExistente.setHoraFim(request.getHoraFim());
+        eventoExistente.setDescricao(request.getDescricao());
+
+        // A lógica de endereço pode ser mais complexa (atualizar ou criar novo).
+        // Por simplicidade, vamos apenas atualizar os campos do endereço existente.
+        Endereco endereco = eventoExistente.getEndereco();
+        endereco.setCep(request.getCep());
+        // ... atualize os outros campos do endereço se necessário
+
+        // 3. Salva o evento atualizado
+        Evento eventoSalvo = eventoRepository.save(eventoExistente);
+
+        // 4. Retorna a resposta com o DTO
+        return ResponseEntity.ok(new EventoResponseDto(eventoSalvo));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<Void> excluirEvento(@PathVariable Long id) {
+        // 1. Verifica se o evento existe antes de tentar deletar
+        if (!eventoRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Evento não encontrado.");
+        }
+
+        // 2. Deleta o evento (e as palestras/vínculos associados, graças ao 'cascade')
+        eventoRepository.deleteById(id);
+
+        // 3. Retorna uma resposta 204 No Content, indicando sucesso
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -4,6 +4,7 @@ package com.example.apiparticipantes.model;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 @Entity
 @Table(name = "evento")
@@ -42,7 +43,13 @@ public class Evento {
     @ManyToOne
     @JoinColumn(name = "id_criador", referencedColumnName = "id_participante")
     private Participante criador;
-    // --- FIM DA CORREÇÃO ---
+
+    @OneToMany(mappedBy = "evento", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Palestra> palestras;
+
+    @OneToMany(mappedBy = "evento", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<VinculoEvento> vinculos;
+
 
 
     // Getters e Setters
@@ -118,4 +125,9 @@ public class Evento {
     public void setCriador(Participante criador) {
         this.criador = criador;
     }
+
+    public List<Palestra> getPalestras() { return palestras; }
+    public void setPalestras(List<Palestra> palestras) { this.palestras = palestras; }
+    public List<VinculoEvento> getVinculos() { return vinculos; }
+    public void setVinculos(List<VinculoEvento> vinculos) { this.vinculos = vinculos; }
 }

@@ -4,6 +4,7 @@ package com.example.apiparticipantes.model;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 @Entity
 @Table(name = "palestra")
@@ -42,6 +43,9 @@ public class Palestra {
     @ManyToOne
     @JoinColumn(name = "id_evento", nullable = false)
     private Evento evento;
+
+    @OneToMany(mappedBy = "palestra", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<InscricaoPalestra> inscricoes;
 
     // Getters e Setters
     public Long getId() {
@@ -123,4 +127,7 @@ public class Palestra {
     public void setEvento(Evento evento) {
         this.evento = evento;
     }
+
+    public List<InscricaoPalestra> getInscricoes() { return inscricoes; }
+    public void setInscricoes(List<InscricaoPalestra> inscricoes) { this.inscricoes = inscricoes; }
 }

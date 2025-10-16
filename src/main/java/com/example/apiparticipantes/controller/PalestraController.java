@@ -112,4 +112,53 @@ public class PalestraController {
         VagasDto vagasDto = new VagasDto(totalVagas, numeroDeInscritos, vagasRestantes);
         return ResponseEntity.ok(vagasDto);
     }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<PalestraResponseDto> editarPalestra(@PathVariable Long id, @RequestBody PalestraRequest request) {
+        // 1. Busca a palestra existente
+        Palestra palestraExistente = palestraRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Palestra não encontrada."));
+
+        // 2. Busca o novo palestrante e evento, se eles foram alterados
+        Participante novoPalestrante = participanteRepository.findByEmailParticipante(request.getPalestranteEmail())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Palestrante com o e-mail fornecido não encontrado."));
+
+        Evento novoEvento = eventoRepository.findById(request.getEventoId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Evento não encontrado."));
+
+        // ... (você pode adicionar a mesma validação de vínculo do método criarPalestra aqui)
+
+        // 3. Atualiza os dados da palestra
+        palestraExistente.setTitulo(request.getTitulo());
+        palestraExistente.setData(request.getData());
+        palestraExistente.setHoraInicio(request.getHoraInicio());
+        palestraExistente.setHoraFim(request.getHoraFim());
+        palestraExistente.setDescricao(request.getDescricao());
+        palestraExistente.setLocalInterno(request.getLocalInterno());
+        palestraExistente.setNumeroVagas(request.getNumeroVagas());
+        palestraExistente.setPalestrante(novoPalestrante);
+        palestraExistente.setEvento(novoEvento);
+
+        // 4. Salva a palestra atualizada
+        Palestra palestraSalva = palestraRepository.save(palestraExistente);
+
+        // 5. Retorna a resposta com o DTO
+        return ResponseEntity.ok(new PalestraResponseDto(palestraSalva));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<Void> excluirPalestra(@PathVariable Long id) {
+        // 1. Verifica se a palestra existe
+        if (!palestraRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Palestra não encontrada.");
+        }
+
+        // 2. Deleta a palestra (e as inscrições associadas)
+        palestraRepository.deleteById(id);
+
+        // 3. Retorna 204 No Content
+        return ResponseEntity.noContent().build();
+    }
 }

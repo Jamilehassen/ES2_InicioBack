@@ -79,6 +79,26 @@ public class ParticipanteController {
         return ResponseEntity.ok(new ParticipanteResponseDto(participante));
     }
 
+    @GetMapping("/me")
+    public ResponseEntity<ParticipanteResponseDto> getMeuPerfil() {
+        // 1. Obtém o e-mail do utilizador autenticado a partir do contexto de segurança
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String emailAutenticado = authentication.getName();
+
+        // 2. Busca o participante no banco de dados usando o e-mail
+        Participante participante = participanteRepository.findByEmailParticipante(emailAutenticado)
+                // Retorna 404 se, por alguma razão muito improvável, o utilizador autenticado não for encontrado
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante autenticado não encontrado."));
+
+        // 3. Verifica se o participante está ativo (se não for ADMIN)
+        // Se a lógica permitir que utilizadores inativos façam login, talvez esta verificação seja necessária aqui também.
+        // Por agora, assumimos que apenas utilizadores ativos conseguem autenticar-se.
+
+        // 4. Converte a entidade para o DTO de resposta e retorna
+        ParticipanteResponseDto respostaDto = new ParticipanteResponseDto(participante);
+        return ResponseEntity.ok(respostaDto);
+    }
+
     /**
      * Rota para editar informações de um participante (ADMIN ou o próprio participante).
      * Não permite editar participantes inativos (exceto ADMIN para reativar, se implementado).
@@ -134,6 +154,56 @@ public class ParticipanteController {
     }
 
     /**
+     * Rota para o participante autenticado editar o SEU PRÓPRIO perfil.
+     */
+    @PutMapping("/me")
+    public ResponseEntity<ParticipanteResponseDto> editarMeuPerfil(@RequestBody ParticipanteUpdateRequestDto request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String emailAutenticado = authentication.getName();
+
+        Participante participante = participanteRepository.findByEmailParticipante(emailAutenticado)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante autenticado não encontrado."));
+
+        // Não permitir edição se estiver inativo
+        if (!participante.isAtivo()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Não é possível editar um participante inativo.");
+        }
+
+        // --- Chama um método auxiliar para a lógica de atualização ---
+        Participante participanteAtualizado = atualizarDadosParticipante(participante, request);
+
+        return ResponseEntity.ok(new ParticipanteResponseDto(participanteAtualizado));
+    }
+
+    /**
+     * Rota para o participante autenticado desativar a SUA PRÓPRIA conta.
+     * Utiliza exclusão lógica.
+     */
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> excluirMeuPerfil() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String emailAutenticado = authentication.getName();
+
+        Participante participante = participanteRepository.findByEmailParticipante(emailAutenticado)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante autenticado não encontrado."));
+
+        // Segurança extra: Impedir que o Admin se auto-desative por esta rota
+        if (participante.getCargo() == com.example.apiparticipantes.model.Cargo.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O administrador não pode ser desativado por esta rota.");
+        }
+
+        if (!participante.isAtivo()) {
+            // Se já estiver inativo, apenas retorna sucesso (ação idempotente)
+            return ResponseEntity.noContent().build();
+        }
+
+        participante.setAtivo(false);
+        participanteRepository.save(participante);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Rota para ADMIN "excluir" (desativar) um participante.
      */
     @DeleteMapping("/{id}")
@@ -152,5 +222,46 @@ public class ParticipanteController {
         // --- FIM DA ALTERAÇÃO ---
 
         return ResponseEntity.noContent().build(); // Retorna 204 No Content
+    }
+
+    // --- Método Auxiliar para Atualização ---
+    /**
+     * Método privado para encapsular a lógica de atualização de dados do participante
+     * (dados pessoais e endereço), chamado tanto por /me quanto por /{id}.
+     */
+    private Participante atualizarDadosParticipante(Participante participante, ParticipanteUpdateRequestDto request) {
+        // Atualiza os dados pessoais
+        participante.setNomeParticipante(request.getNomeParticipante());
+        participante.setTelefoneParticipante(request.getTelefoneParticipante());
+
+        // --- Lógica para atualizar/criar o endereço ---
+        if (request.getCep() != null && !request.getCep().isEmpty()) {
+            UnidadeFederacao uf = unidadeFederacaoRepository.findById(request.getSiglaUf())
+                    .orElseGet(() -> unidadeFederacaoRepository.save(new UnidadeFederacao(request.getSiglaUf(), request.getSiglaUf())));
+            Cidade cidade = cidadeRepository.findByNomeCidade(request.getNomeCidade())
+                    .orElseGet(() -> cidadeRepository.save(new Cidade(UUID.randomUUID().toString(), request.getNomeCidade(), uf)));
+            Bairro bairro = bairroRepository.findByNomeBairro(request.getNomeBairro())
+                    .orElseGet(() -> bairroRepository.save(new Bairro(UUID.randomUUID().toString(), request.getNomeBairro())));
+            TipoLogradouro tipoLogradouro = tipoLogradouroRepository.findByNomeTipoLogradouro(request.getNomeTipoLogradouro())
+                    .orElseGet(() -> tipoLogradouroRepository.save(new TipoLogradouro(UUID.randomUUID().toString(), request.getNomeTipoLogradouro())));
+            Logradouro logradouro = logradouroRepository.findByNomeLogradouro(request.getNomeLogradouro())
+                    .orElseGet(() -> logradouroRepository.save(new Logradouro(UUID.randomUUID().toString(), request.getNomeLogradouro(), tipoLogradouro)));
+
+            Endereco endereco = participante.getEndereco();
+            if (endereco == null) {
+                endereco = new Endereco();
+            }
+            endereco.setCep(request.getCep());
+            endereco.setComplemento(request.getComplemento());
+            endereco.setNumero(request.getNumero());
+            endereco.setBairro(bairro);
+            endereco.setCidade(cidade);
+            endereco.setLogradouro(logradouro);
+            Endereco enderecoSalvo = enderecoRepository.save(endereco);
+            participante.setEndereco(enderecoSalvo);
+        }
+
+        // Salva e retorna o participante atualizado
+        return participanteRepository.save(participante);
     }
 }

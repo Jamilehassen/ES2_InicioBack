@@ -67,6 +67,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/inscricoes-palestra/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/tipos-participacao").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/palestras/**").authenticated() // Cobre /api/palestras e /api/palestras/{id}/vagas
+                        .requestMatchers(HttpMethod.GET, "/api/participantes/me").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/participantes/me").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/participantes/me").authenticated()
                         // Permite GET /api/participantes/{id} (a lógica @PreAuthorize controla o acesso)
                         .requestMatchers(HttpMethod.GET, "/api/participantes/*").authenticated()
                         // Permite PUT /api/participantes/{id} (a lógica @PreAuthorize controla o acesso)

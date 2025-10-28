@@ -73,6 +73,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
 
                         // 2. Rotas Específicas para Usuários Autenticados (qualquer cargo)
+                        .requestMatchers(HttpMethod.GET,"/api/eventos").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/vinculos-evento/*/inscrever-se").authenticated()
                         .requestMatchers("/api/inscricoes-palestra/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/tipos-participacao").authenticated()

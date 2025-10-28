@@ -3,7 +3,7 @@ package com.example.apiparticipantes.controller;
 import com.example.apiparticipantes.dto.ParticipanteResponseDto;
 import com.example.apiparticipantes.dto.ParticipanteUpdateRequestDto;
 import com.example.apiparticipantes.model.*;
-import com.example.apiparticipantes.repository.*; // Importa todos os repositórios necessários
+import com.example.apiparticipantes.repository.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.UUID; // Importar UUID
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -22,7 +22,6 @@ import java.util.stream.Collectors;
 public class ParticipanteController {
 
     private final ParticipanteRepository participanteRepository;
-    // --- Adicionar injeção dos repositórios de endereço ---
     private final EnderecoRepository enderecoRepository;
     private final BairroRepository bairroRepository;
     private final CidadeRepository cidadeRepository;
@@ -31,7 +30,6 @@ public class ParticipanteController {
     private final TipoLogradouroRepository tipoLogradouroRepository;
 
 
-    // --- Atualizar o construtor ---
     public ParticipanteController(ParticipanteRepository participanteRepository, EnderecoRepository enderecoRepository, BairroRepository bairroRepository, CidadeRepository cidadeRepository, UnidadeFederacaoRepository unidadeFederacaoRepository, LogradouroRepository logradouroRepository, TipoLogradouroRepository tipoLogradouroRepository) {
         this.participanteRepository = participanteRepository;
         this.enderecoRepository = enderecoRepository;
@@ -42,12 +40,48 @@ public class ParticipanteController {
         this.tipoLogradouroRepository = tipoLogradouroRepository;
     }
 
+    /**
+     * Rota para ADMIN listar APENAS os participantes ATIVOS.
+     */
+    @GetMapping
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public List<ParticipanteResponseDto> listarTodosAtivos() { // Nome do método ligeiramente alterado para clareza
+        return participanteRepository.findAll().stream()
+                .filter(Participante::isAtivo) // <-- Filtra apenas os ativos
+                .map(ParticipanteResponseDto::new)
+                .collect(Collectors.toList());
+    }
 
-    // ... (métodos listarTodos, visualizarParticipante) ...
+    /**
+     * Rota para visualizar um participante específico (ADMIN ou o próprio participante).
+     * Retorna 404 se o participante estiver inativo e o requisitante não for ADMIN.
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<ParticipanteResponseDto> visualizarParticipante(@PathVariable String id) {
+        Participante participante = participanteRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante não encontrado."));
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String emailAutenticado = authentication.getName();
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ADMIN"));
+
+        // Se não for admin E o participante estiver inativo, retorna não encontrado
+        if (!isAdmin && !participante.isAtivo()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante não encontrado.");
+        }
+
+        // Se for admin OU for o próprio utilizador (e participante está ativo ou inativo - admin vê tudo)
+        if (!isAdmin && !participante.getEmailParticipante().equals(emailAutenticado)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acesso negado.");
+        }
+
+        return ResponseEntity.ok(new ParticipanteResponseDto(participante));
+    }
 
     /**
      * Rota para editar informações de um participante (ADMIN ou o próprio participante).
-     * Inclui a lógica para atualizar ou criar o endereço.
+     * Não permite editar participantes inativos (exceto ADMIN para reativar, se implementado).
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ADMIN') or @participanteSecurityService.isSelf(#id, authentication)")
@@ -55,56 +89,68 @@ public class ParticipanteController {
         Participante participante = participanteRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante não encontrado."));
 
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ADMIN"));
+
+        // Impede a edição de participantes inativos por não-admins
+        if (!isAdmin && !participante.isAtivo()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Não é possível editar um participante inativo.");
+        }
+
         // Atualiza os dados pessoais
         participante.setNomeParticipante(request.getNomeParticipante());
         participante.setTelefoneParticipante(request.getTelefoneParticipante());
 
         // --- Lógica para atualizar/criar o endereço ---
-        // Verifica se foram fornecidos dados de endereço na requisição
-        if (request.getCep() != null && !request.getCep().isEmpty()) { // Usamos o CEP como indicador
-
-            // Reutiliza a lógica do AuthController para encontrar/criar entidades relacionadas
+        if (request.getCep() != null && !request.getCep().isEmpty()) {
             UnidadeFederacao uf = unidadeFederacaoRepository.findById(request.getSiglaUf())
                     .orElseGet(() -> unidadeFederacaoRepository.save(new UnidadeFederacao(request.getSiglaUf(), request.getSiglaUf())));
-
             Cidade cidade = cidadeRepository.findByNomeCidade(request.getNomeCidade())
                     .orElseGet(() -> cidadeRepository.save(new Cidade(UUID.randomUUID().toString(), request.getNomeCidade(), uf)));
-
             Bairro bairro = bairroRepository.findByNomeBairro(request.getNomeBairro())
                     .orElseGet(() -> bairroRepository.save(new Bairro(UUID.randomUUID().toString(), request.getNomeBairro())));
-
             TipoLogradouro tipoLogradouro = tipoLogradouroRepository.findByNomeTipoLogradouro(request.getNomeTipoLogradouro())
                     .orElseGet(() -> tipoLogradouroRepository.save(new TipoLogradouro(UUID.randomUUID().toString(), request.getNomeTipoLogradouro())));
-
             Logradouro logradouro = logradouroRepository.findByNomeLogradouro(request.getNomeLogradouro())
                     .orElseGet(() -> logradouroRepository.save(new Logradouro(UUID.randomUUID().toString(), request.getNomeLogradouro(), tipoLogradouro)));
 
-            // Verifica se o participante já tem um endereço para atualizar, senão cria um novo
             Endereco endereco = participante.getEndereco();
             if (endereco == null) {
                 endereco = new Endereco();
             }
-
-            // Atualiza os campos do endereço
             endereco.setCep(request.getCep());
             endereco.setComplemento(request.getComplemento());
             endereco.setNumero(request.getNumero());
             endereco.setBairro(bairro);
             endereco.setCidade(cidade);
             endereco.setLogradouro(logradouro);
-
-            // Salva o endereço (necessário se for um novo endereço)
             Endereco enderecoSalvo = enderecoRepository.save(endereco);
-            // Associa o endereço (novo ou atualizado) ao participante
             participante.setEndereco(enderecoSalvo);
         }
-        // Se não vieram dados de endereço no request, o endereço existente (ou a falta dele) é mantido.
 
-        // Salva o participante com todas as alterações (dados pessoais e/ou endereço)
         Participante participanteSalvo = participanteRepository.save(participante);
-
-        // Retorna o DTO atualizado
         return ResponseEntity.ok(new ParticipanteResponseDto(participanteSalvo));
     }
 
+    /**
+     * Rota para ADMIN "excluir" (desativar) um participante.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<Void> desativarParticipante(@PathVariable String id) { // Nome do método alterado
+        Participante participante = participanteRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante não encontrado."));
+
+        if (participante.getCargo() == com.example.apiparticipantes.model.Cargo.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não é possível desativar o administrador principal.");
+        }
+
+        // --- LÓGICA DE EXCLUSÃO ALTERADA ---
+        participante.setAtivo(false); // Apenas marca como inativo
+        participanteRepository.save(participante); // Salva a alteração
+        // --- FIM DA ALTERAÇÃO ---
+
+        return ResponseEntity.noContent().build(); // Retorna 204 No Content
+    }
 }

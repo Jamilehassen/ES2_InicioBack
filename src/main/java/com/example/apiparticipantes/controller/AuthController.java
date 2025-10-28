@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.util.Arrays;
 import java.util.List;
 
+import java.util.Random;
 import java.util.UUID;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -205,37 +206,36 @@ public class AuthController {
         return ResponseEntity.ok("Logout realizado com sucesso.");
     }
 
-    /**
-     * Rota para solicitar a redefinição de senha.
-     */
     @PostMapping("/forgot-password")
-    @Transactional // Garante que a limpeza de tokens antigos e criação do novo ocorram juntas
+    @Transactional
     public ResponseEntity<String> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         Participante participante = participanteRepository.findByEmailParticipante(request.getEmail())
-                .orElse(null); // Não retorne erro se o e-mail não existe (segurança)
+                .orElse(null);
 
-        if (participante != null && participante.isAtivo()) { // Só envia se o user existir e estiver ativo
-            // Limpa tokens antigos deste utilizador
+        boolean emailSent = false;
+
+        if (participante != null && participante.isAtivo()) {
             tokenRepository.deleteByParticipanteIdParticipante(participante.getIdParticipante());
 
-            // Gera um novo token
-            String tokenValue = UUID.randomUUID().toString();
-            LocalDateTime expiryDate = LocalDateTime.now().plusHours(1); // Token válido por 1 hora
+            Random rnd = new Random();
+            int number = rnd.nextInt(900000) + 100000;
+            String codeValue = String.valueOf(number);
 
-            PasswordResetToken resetToken = new PasswordResetToken(tokenValue, participante, expiryDate);
-            tokenRepository.save(resetToken);
+            LocalDateTime expiryDate = LocalDateTime.now().plusMinutes(15); // Código válido por 15 minutos
 
-            // Envia o e-mail
-            try {
-                emailService.sendPasswordResetEmail(participante.getEmailParticipante(), tokenValue);
-            } catch (Exception e) {
-                // Logar o erro de envio de e-mail
-                // Poderia retornar um erro genérico aqui, mas por segurança, é melhor não
+            PasswordResetToken resetCode = new PasswordResetToken(codeValue, participante, expiryDate);
+            tokenRepository.save(resetCode);
+
+            // Tenta enviar e-mail com o CÓDIGO
+            emailSent = emailService.sendPasswordResetEmail(participante.getEmailParticipante(), codeValue);
+
+            // Removida a parte do SMS
+            if (!emailSent) {
+                // logger.error("Falha ao enviar e-mail de redefinição para {}", participante.getEmailParticipante());
             }
         }
 
-        // Retorne sempre uma mensagem genérica por segurança
-        return ResponseEntity.ok("Se o e-mail estiver registado e ativo, receberá instruções para redefinir a senha.");
+        return ResponseEntity.ok("Se o e-mail estiver registado e ativo, receberá instruções para redefinir a senha via E-mail."); // Mensagem ajustada
     }
 
     /**
@@ -243,11 +243,11 @@ public class AuthController {
      */
     @PostMapping("/reset-password")
     public ResponseEntity<String> resetPassword(@RequestBody ResetPasswordRequest request) {
-        PasswordResetToken resetToken = tokenRepository.findByToken(request.getToken())
+        PasswordResetToken resetCode = tokenRepository.findByCode(request.getCode()) // Deve ser findByCode
                 .orElse(null);
 
-        if (resetToken == null || resetToken.isExpired()) {
-            return ResponseEntity.badRequest().body("Token inválido ou expirado.");
+        if (resetCode == null || resetCode.isExpired()) {
+            return ResponseEntity.badRequest().body("Código inválido ou expirado.");
         }
 
         // Verifica se a nova senha é válida (adicione mais validações se necessário)
@@ -255,13 +255,13 @@ public class AuthController {
             return ResponseEntity.badRequest().body("A nova senha deve ter pelo menos 6 caracteres.");
         }
 
-        Participante participante = resetToken.getParticipante();
+        Participante participante = resetCode.getParticipante();
         // Codifica a nova senha antes de salvar
         participante.setSenhaParticipante(passwordEncoder.encode(request.getNewPassword()));
         participanteRepository.save(participante);
 
         // Remove o token após o uso
-        tokenRepository.delete(resetToken);
+        tokenRepository.delete(resetCode);
 
         return ResponseEntity.ok("Senha redefinida com sucesso.");
     }

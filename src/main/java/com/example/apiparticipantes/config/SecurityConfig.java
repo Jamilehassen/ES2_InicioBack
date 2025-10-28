@@ -67,6 +67,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/inscricoes-palestra/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/tipos-participacao").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/palestras/**").authenticated() // Cobre /api/palestras e /api/palestras/{id}/vagas
+                        // Permite GET /api/participantes/{id} (a lógica @PreAuthorize controla o acesso)
+                        .requestMatchers(HttpMethod.GET, "/api/participantes/*").authenticated()
+                        // Permite PUT /api/participantes/{id} (a lógica @PreAuthorize controla o acesso)
+                        .requestMatchers(HttpMethod.PUT, "/api/participantes/*").authenticated()
 
                         // 3. Rotas Gerais para ADMIN (qualquer método: GET, POST, PUT, DELETE)
                         .requestMatchers("/api/eventos/**").hasAuthority("ADMIN")

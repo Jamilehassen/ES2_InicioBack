@@ -24,7 +24,7 @@ public class ParticipanteResponseDto {
             this.endereco = null;
         }
     }
-    
+
     public String getId() {
         return id;
     }

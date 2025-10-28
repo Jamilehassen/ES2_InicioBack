@@ -68,6 +68,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // 1. Rotas Públicas (acessíveis sem token)
+                        .requestMatchers("/api/auth/**").permitAll() // Deve cobrir /register, /login, /logout, /forgot-password, /reset-password
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
 

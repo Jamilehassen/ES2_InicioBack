@@ -1,12 +1,11 @@
 package com.example.apiparticipantes.controller;
 
-import com.example.apiparticipantes.dto.RegisterRequest;
-import com.example.apiparticipantes.dto.JwtResponse;
-import com.example.apiparticipantes.dto.LoginRequest;
+import com.example.apiparticipantes.dto.*;
 import com.example.apiparticipantes.model.*;
 import com.example.apiparticipantes.repository.*;
 import com.example.apiparticipantes.security.JwtTokenProvider;
 
+import com.example.apiparticipantes.service.EmailService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -17,7 +16,13 @@ import com.example.apiparticipantes.service.TokenBlacklistService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.util.StringUtils;
 
+import java.util.Arrays;
+import java.util.List;
+
 import java.util.UUID;
+
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -38,6 +43,19 @@ public class AuthController {
 
     private final TokenBlacklistService tokenBlacklistService;
 
+    private static final List<String> ALLOWED_EMAIL_DOMAINS = Arrays.asList(
+            "gmail.com",
+            "hotmail.com",
+            "outlook.com",
+            "yahoo.com",
+            "live.com",
+            "icloud.com",
+            "unioeste.br"
+    );
+
+    private final PasswordResetTokenRepository tokenRepository;
+    private final EmailService emailService;
+
     public AuthController(ParticipanteRepository participanteRepository,
                           EnderecoRepository enderecoRepository,
                           BairroRepository bairroRepository,
@@ -48,7 +66,9 @@ public class AuthController {
                           PasswordEncoder passwordEncoder,
                           AuthenticationManager authenticationManager,
                           JwtTokenProvider tokenProvider,
-                          TokenBlacklistService tokenBlacklistService) {
+                          TokenBlacklistService tokenBlacklistService,
+                          PasswordResetTokenRepository tokenRepository,
+                          EmailService emailService) {
         this.participanteRepository = participanteRepository;
         this.enderecoRepository = enderecoRepository;
         this.bairroRepository = bairroRepository;
@@ -60,6 +80,8 @@ public class AuthController {
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
         this.tokenBlacklistService = tokenBlacklistService;
+        this.tokenRepository = tokenRepository;
+        this.emailService = emailService;
     }
 
     @PostMapping("/register")
@@ -71,6 +93,15 @@ public class AuthController {
 
         if (request.getCargo() == Cargo.ADMIN) {
             return ResponseEntity.badRequest().body("Não é possível se registrar como ADMIN.");
+        }
+
+        String email = request.getEmailParticipante();
+        if (email == null || !email.contains("@")) {
+            return ResponseEntity.badRequest().body("Formato de e-mail inválido.");
+        }
+        String domain = email.substring(email.lastIndexOf("@") + 1).toLowerCase();
+        if (!ALLOWED_EMAIL_DOMAINS.contains(domain)) {
+            return ResponseEntity.badRequest().body("Domínio de e-mail não permitido. Use um e-mail de um fornecedor conhecido (Gmail, Hotmail, etc.).");
         }
 
         if (participanteRepository.existsByEmailParticipante(request.getEmailParticipante())) {
@@ -172,5 +203,66 @@ public class AuthController {
         }
 
         return ResponseEntity.ok("Logout realizado com sucesso.");
+    }
+
+    /**
+     * Rota para solicitar a redefinição de senha.
+     */
+    @PostMapping("/forgot-password")
+    @Transactional // Garante que a limpeza de tokens antigos e criação do novo ocorram juntas
+    public ResponseEntity<String> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        Participante participante = participanteRepository.findByEmailParticipante(request.getEmail())
+                .orElse(null); // Não retorne erro se o e-mail não existe (segurança)
+
+        if (participante != null && participante.isAtivo()) { // Só envia se o user existir e estiver ativo
+            // Limpa tokens antigos deste utilizador
+            tokenRepository.deleteByParticipanteIdParticipante(participante.getIdParticipante());
+
+            // Gera um novo token
+            String tokenValue = UUID.randomUUID().toString();
+            LocalDateTime expiryDate = LocalDateTime.now().plusHours(1); // Token válido por 1 hora
+
+            PasswordResetToken resetToken = new PasswordResetToken(tokenValue, participante, expiryDate);
+            tokenRepository.save(resetToken);
+
+            // Envia o e-mail
+            try {
+                emailService.sendPasswordResetEmail(participante.getEmailParticipante(), tokenValue);
+            } catch (Exception e) {
+                // Logar o erro de envio de e-mail
+                // Poderia retornar um erro genérico aqui, mas por segurança, é melhor não
+            }
+        }
+
+        // Retorne sempre uma mensagem genérica por segurança
+        return ResponseEntity.ok("Se o e-mail estiver registado e ativo, receberá instruções para redefinir a senha.");
+    }
+
+    /**
+     * Rota para redefinir a senha usando o token.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@RequestBody ResetPasswordRequest request) {
+        PasswordResetToken resetToken = tokenRepository.findByToken(request.getToken())
+                .orElse(null);
+
+        if (resetToken == null || resetToken.isExpired()) {
+            return ResponseEntity.badRequest().body("Token inválido ou expirado.");
+        }
+
+        // Verifica se a nova senha é válida (adicione mais validações se necessário)
+        if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
+            return ResponseEntity.badRequest().body("A nova senha deve ter pelo menos 6 caracteres.");
+        }
+
+        Participante participante = resetToken.getParticipante();
+        // Codifica a nova senha antes de salvar
+        participante.setSenhaParticipante(passwordEncoder.encode(request.getNewPassword()));
+        participanteRepository.save(participante);
+
+        // Remove o token após o uso
+        tokenRepository.delete(resetToken);
+
+        return ResponseEntity.ok("Senha redefinida com sucesso.");
     }
 }

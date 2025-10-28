@@ -13,6 +13,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.apiparticipantes.service.TokenBlacklistService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.util.StringUtils;
+
 import java.util.UUID;
 
 @RestController
@@ -32,6 +36,8 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
 
+    private final TokenBlacklistService tokenBlacklistService;
+
     public AuthController(ParticipanteRepository participanteRepository,
                           EnderecoRepository enderecoRepository,
                           BairroRepository bairroRepository,
@@ -41,7 +47,8 @@ public class AuthController {
                           TipoLogradouroRepository tipoLogradouroRepository,
                           PasswordEncoder passwordEncoder,
                           AuthenticationManager authenticationManager,
-                          JwtTokenProvider tokenProvider) {
+                          JwtTokenProvider tokenProvider,
+                          TokenBlacklistService tokenBlacklistService) {
         this.participanteRepository = participanteRepository;
         this.enderecoRepository = enderecoRepository;
         this.bairroRepository = bairroRepository;
@@ -52,6 +59,7 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     @PostMapping("/register")
@@ -147,5 +155,22 @@ public class AuthController {
         var auth = authenticationManager.authenticate(authToken);
         String token = tokenProvider.generateToken(request.getEmail());
         return ResponseEntity.ok(new JwtResponse(token, request.getEmail()));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<String> logout(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        String token = null;
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            token = bearerToken.substring(7);
+        }
+
+        if (token != null) {
+            tokenBlacklistService.adicionarTokenNaBlacklist(token);
+            // Poderíamos extrair a data de expiração do token e guardá-lo na blacklist
+            // apenas até essa data para otimizar o espaço.
+        }
+        
+        return ResponseEntity.ok("Logout realizado com sucesso.");
     }
 }

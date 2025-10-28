@@ -170,7 +170,7 @@ public class AuthController {
             // Poderíamos extrair a data de expiração do token e guardá-lo na blacklist
             // apenas até essa data para otimizar o espaço.
         }
-        
+
         return ResponseEntity.ok("Logout realizado com sucesso.");
     }
 }

@@ -81,20 +81,20 @@ public class ParticipanteController {
 
     @GetMapping("/me")
     public ResponseEntity<ParticipanteResponseDto> getMeuPerfil() {
-        // 1. Obtém o e-mail do utilizador autenticado a partir do contexto de segurança
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String emailAutenticado = authentication.getName();
 
-        // 2. Busca o participante no banco de dados usando o e-mail
         Participante participante = participanteRepository.findByEmailParticipante(emailAutenticado)
-                // Retorna 404 se, por alguma razão muito improvável, o utilizador autenticado não for encontrado
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participante autenticado não encontrado."));
 
-        // 3. Verifica se o participante está ativo (se não for ADMIN)
-        // Se a lógica permitir que utilizadores inativos façam login, talvez esta verificação seja necessária aqui também.
-        // Por agora, assumimos que apenas utilizadores ativos conseguem autenticar-se.
+        // --- VERIFICAÇÃO DE SEGURANÇA ---
+        // Se o utilizador estiver inativo, negamos o acesso
+        if (!participante.isAtivo()) {
+            // Usar FORBIDDEN é semanticamente mais correto aqui, pois o utilizador existe mas não tem permissão
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Utilizador inativo.");
+        }
+        // --- FIM DA VERIFICAÇÃO ---
 
-        // 4. Converte a entidade para o DTO de resposta e retorna
         ParticipanteResponseDto respostaDto = new ParticipanteResponseDto(participante);
         return ResponseEntity.ok(respostaDto);
     }

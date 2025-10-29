@@ -71,6 +71,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll() // Deve cobrir /register, /login, /logout, /forgot-password, /reset-password
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/address/lookup/**").permitAll()
 
                         // 2. Rotas Específicas para Usuários Autenticados (qualquer cargo)
                         .requestMatchers(HttpMethod.GET,"/api/eventos").authenticated()

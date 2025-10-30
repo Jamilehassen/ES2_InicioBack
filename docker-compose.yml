@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine # Usando uma imagem leve do Postgres 16
+    container_name: es2_postgres_db
+    environment:
+      # Estas variáveis vêm diretamente do seu .env
+      # O Docker vai criar o user 'administrador' e a base 'api_participantes'
+      POSTGRES_USER: ${SPRING_DATASOURCE_USERNAME}
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      POSTGRES_DB: api_participantes
+    ports:
+      - "5432:5432" # Expõe a porta do container para o seu localhost
+    volumes:
+      # Mapeia o script de inicialização para o diretório de inicialização do Postgres
+      # Este script só roda NA PRIMEIRA VEZ que o container é criado.
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      # (Opcional) Mapeia um volume para persistir os dados
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SPRING_DATASOURCE_USERNAME} -d api_participantes"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # Define o volume para persistir os dados
+  postgres-data:
